@@ -276,8 +276,8 @@ define network::interface (
           }
         }
 
-        if ! defined(Network::Interface["${interface}:ucarp${ucarp_vid}"]) {
-          network::interface{"${interface}:ucarp${ucarp_vid}":
+        if ! defined(Network::Interface["${interface}:ucarp"]) {
+          network::interface{"${interface}:ucarp":
             address => $ucarp_vip,
             netmask => "255.255.255.255",
           }

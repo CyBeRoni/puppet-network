@@ -151,6 +151,10 @@ allow-hotplug <%= @interface %>
     ucarp-advskew <%= @ucarp_advskew %>
     ucarp-advbase <%= @ucarp_advbase %>
     ucarp-master <%= @ucarp_master %>
-    ucarp-upscript <%= @ucarp_upscript %>
-    ucarp-downscript <%= @ucarp_downscript %>
+    <% if @ucarp_upscript -%>
+      ucarp-upscript <%= @ucarp_upscript %>
+    <% end -%>
+    <% if @ucarp_downscript -%>
+      ucarp-downscript <%= @ucarp_downscript %>
+    <% end -%>
 <% end -%>
