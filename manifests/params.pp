@@ -37,6 +37,9 @@ class network::params {
     default  => undef,
   }
 
+  $ucarp_package_name = 'ucarp'
+  $ucarp_package_ensure = 'present'
+
   case $::osfamily {
     'Debian','RedHat','Amazon','Suse': { }
     default: {

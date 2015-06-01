@@ -42,6 +42,9 @@ class network (
   $package_name              = $network::params::package_name,
   $package_ensure            = 'present',
 
+  $ucarp_package_name        = $network::params::ucarp_package_name,
+  $ucarp_package_ensure      = $network::params::ucarp_package_ensure,
+
   $service_restart_exec      = $network::params::service_restart_exec,
 
   $config_file_path          = $network::params::config_file_path,
