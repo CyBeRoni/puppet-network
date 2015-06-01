@@ -21,8 +21,14 @@
 #   - First level: Interface name
 #   - Second level: Interface options (check network::interface for the
 #     available options)
-#   If an hash is provided here, network::interfaces defines are declared with:
+#   If an hash is provided here, network::interface defines are declared with:
 #   create_resources("network::interface", $interfaces_hash)
+#
+# [*routes_hash*]
+#   Hash. Default undef.
+#   The complete routes configuration (nested) hash
+#   If an hash is provided here, network::route defines are declared with:
+#   create_resources("network::route", $routes_hash)
 #
 # Refer to https://github.com/stdmod for official documentation
 # on the stdmod parameters used
@@ -33,13 +39,17 @@ class network (
 
   $interfaces_hash           = undef,
 
+  $routes_hash               = undef,
+
   $hostname_file_template   = "network/hostname-${::osfamily}.erb",
 
   # Parameter used only on RedHat family
   $gateway                   = undef,
+  $nozeroconf                = undef,
+  $ipv6enable                = undef,
 
   # Stdmod commons
-  $package_name              = $network::params::package_name,
+  $package_name              = undef,
   $package_ensure            = 'present',
 
   $ucarp_package_name        = $network::params::ucarp_package_name,
@@ -72,9 +82,31 @@ class network (
   $scope_hash_filter         = '(uptime.*|timestamp)',
 
   $tcp_port                  = undef,
-  $udp_port                  = undef
+  $udp_port                  = undef,
+
+  $hiera_merge               = false,
 
   ) inherits network::params {
+
+  # Hiera import
+
+  if( $hiera_merge ) {
+    $hiera_interfaces_hash = hiera_hash("${module_name}::interfaces_hash",undef)
+    $real_interfaces_hash = $hiera_interfaces_hash ? {
+      undef   => $interfaces_hash,
+      default => $hiera_interfaces_hash,
+    }
+
+    $hiera_routes_hash = hiera_hash("${module_name}::routes_hash",undef)
+    $real_routes_hash = $hiera_routes_hash ? {
+      undef   => $routes_hash,
+      default => $hiera_routes_hash,
+    }
+  }
+  else {
+    $real_interfaces_hash = $interfaces_hash
+    $real_routes_hash     = $routes_hash
+  }
 
 
   # Class variables validation and management
@@ -84,6 +116,8 @@ class network (
   if $config_file_options_hash { validate_hash($config_file_options_hash) }
   if $monitor_options_hash { validate_hash($monitor_options_hash) }
   if $firewall_options_hash { validate_hash($firewall_options_hash) }
+  if $real_interfaces_hash { validate_hash($real_interfaces_hash) }
+  if $real_routes_hash { validate_hash($real_routes_hash) }
 
   $config_file_owner          = $network::params::config_file_owner
   $config_file_group          = $network::params::config_file_group
@@ -92,7 +126,7 @@ class network (
   $manage_config_file_content = default_content($config_file_content, $config_file_template)
 
   $manage_config_file_notify  = $config_file_notify ? {
-    'class_default' => "Exec[$network::service_restart_exec]",
+    'class_default' => "Exec[${network::service_restart_exec}]",
     'undef'         => undef,
     ''              => undef,
     undef           => undef,
@@ -121,8 +155,8 @@ class network (
 
   if $network::package_name {
     package { 'network':
-      ensure   => $network::package_ensure,
-      name     => $network::package_name,
+      ensure => $network::package_ensure,
+      name   => $network::package_name,
     }
   }
 
@@ -165,8 +199,23 @@ class network (
 
   # Create network interfaces from interfaces_hash, if present
 
-  if $interfaces_hash {
-    create_resources('network::interface', $interfaces_hash)
+  if $real_interfaces_hash {
+    create_resources('network::interface', $real_interfaces_hash)
+  }
+
+  if $real_routes_hash {
+    if $::osfamily == 'Suse' {
+      file { '/etc/sysconfig/network/routes':
+        ensure  => $network::config_file_ensure,
+        mode    => $network::config_file_mode,
+        owner   => $network::config_file_owner,
+        group   => $network::config_file_group,
+        content => template("network/route-${::osfamily}.erb"),
+        notify  => $network::manage_config_file_notify,
+      }
+    } else {
+      create_resources('network::route', $real_routes_hash)
+    }
   }
 
 
@@ -181,6 +230,15 @@ class network (
       content => template($network::hostname_file_template),
       notify  => $network::manage_config_file_notify,
     }
+    case $::lsbmajdistrelease {
+      '7': {
+        exec { 'sethostname':
+          command => "/usr/bin/hostnamectl set-hostname ${manage_hostname}",
+          unless  => "/usr/bin/hostnamectl status | grep 'Static hostname: ${manage_hostname}'",
+        }
+      }
+      default: {}
+    }
   }
 
   # Configure hostname (On Debian)
@@ -193,6 +251,23 @@ class network (
       group   => $network::config_file_group,
       content => template($network::hostname_file_template),
       notify  => $network::manage_config_file_notify,
+    }
+  }
+
+  if $::osfamily == 'Suse' {
+    if $network::hostname {
+      file { '/etc/HOSTNAME':
+        ensure  => $network::config_file_ensure,
+        mode    => $network::config_file_mode,
+        owner   => $network::config_file_owner,
+        group   => $network::config_file_group,
+        content => inline_template("<%= @manage_hostname %>\n"),
+        notify  => $network::sethostname,
+      }
+      exec { 'sethostname':
+        command => "/bin/hostname ${manage_hostname}",
+        unless  => "/bin/hostname -f | grep ${manage_hostname}",
+      }
     }
   }
 

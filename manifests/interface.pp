@@ -75,18 +75,28 @@
 #    configure dhcp on the interface via the bootproto setting.
 #    If both are present bootproto is used.
 #
+#  $arpcheck      = undef
+#    Whether the interface will check if the supplied IP address is already in
+#    use. Valid values are undef, "yes", "no".
+#
 # Check the arguments in the code for the other RedHat specific settings
+# If defined they are set in the used template.
+#
+# == Suse only parameters
+#
+# Check the arguments in the code for the other Suse specific settings
 # If defined they are set in the used template.
 #
 define network::interface (
 
   $enable          = true,
+  $ensure          = 'present',
   $template        = "network/interface/${::osfamily}.erb",
   $interface       = $name,
 
   $enable_dhcp     = false,
 
-  $ipaddress       = undef,
+  $ipaddress       = '',
   $netmask         = undef,
   $network         = undef,
   $broadcast       = undef,
@@ -102,7 +112,7 @@ define network::interface (
   $method          = '',
   $family          = 'inet',
   $stanza          = 'iface',
-  $address         = undef,
+  $address         = '',
   $dns_search      = undef,
   $dns_nameservers = undef,
   # For method: static
@@ -137,6 +147,7 @@ define network::interface (
   $media           = undef,
   $accept_ra       = undef,
   $autoconf        = undef,
+  $vlan_raw_device = undef,
 
   # Common ifupdown scripts
   $up              = [ ],
@@ -153,7 +164,15 @@ define network::interface (
   $bond_downdelay  = undef,
   $bond_updelay    = undef,
   $bond_master     = undef,
-  $bond_slaves     = undef,
+  $bond_primary    = undef,
+  $bond_slaves     = [ ],
+  $bond_xmit_hash_policy    = undef,
+
+  # For bridging
+  $bridge_ports    = [ ],
+  $bridge_stp      = undef,
+  $bridge_fd       = undef,
+  $bridge_maxwait  = undef,
 
   # uCARP ip failover
   $ucarp_vid       = undef,
@@ -166,7 +185,7 @@ define network::interface (
   $ucarp_downscript= undef,
 
   # RedHat specific
-  $ipaddr          = undef,
+  $ipaddr          = '',
   $uuid            = undef,
   $bootproto       = '',
   $userctl         = 'no',
@@ -176,19 +195,45 @@ define network::interface (
   $dhcp_hostname   = undef,
   $srcaddr         = undef,
   $peerdns         = '',
+  $peerntp         = '',
   $onboot          = '',
+  $defroute        = undef,
   $dns1            = undef,
   $dns2            = undef,
+  $domain          = undef,
+  $nm_controlled   = undef,
   $master          = undef,
   $slave           = undef,
   $bonding_opts    = undef,
+  $vlan            = undef,
+  $vlan_name_type  = undef,
+  $physdev         = undef,
+  $bridge          = undef,
+  $arpcheck        = undef,
+  $zone            = undef,
 
-
-  # Suse specific
+  ## Suse specific
   $startmode       = '',
-  $usercontrol     = 'no'
+  $usercontrol     = 'no',
+  $firewall        = undef,
+  $aliases         = undef,
+  $remote_ipaddr   = undef,
+
+  # For bonding
+  $bond_moduleopts = undef,
+  # also used for Suse bonding: $bond_master, $bond_slaves
+
+  # For bridging
+  $bridge_fwddelay = undef,
+  # also used for Suse bridging: $bridge, $bridge_ports, $bridge_stp
+
+  # For vlan
+  $etherdevice     = undef,
+  # also used for Suse vlan: $vlan
 
   ) {
+
+  include ::network
 
   validate_bool($auto)
   validate_bool($enable)
@@ -197,22 +242,44 @@ define network::interface (
   validate_array($pre_up)
   validate_array($down)
   validate_array($pre_down)
+  validate_array($slaves)
+  validate_array($bond_slaves)
+  validate_array($bridge_ports)
+
+
+  if $arpcheck != undef and ! ($arpcheck in ['yes', 'no']) {
+    fail('arpcheck must be one of: undef, yes, no')
+  }
 
   $manage_hwaddr = $hwaddr ? {
     default => $hwaddr,
   }
 
-  # Debian specific
-  $manage_address = $address ? {
-    ''      => $ipaddress,
-    default => $address,
-  }
   $manage_method = $method ? {
     ''     => $enable_dhcp ? {
       true  => 'dhcp',
       false => 'static',
     },
     default => $method,
+  }
+
+  # Debian specific
+  case $manage_method {
+    'auto': { $manage_address = undef }
+    'bootp': { $manage_address = undef }
+    'dhcp': { $manage_address = undef }
+    'ipv4ll': { $manage_address = undef }
+    'loopback': { $manage_address = undef }
+    'manual': { $manage_address = undef }
+    'none': { $manage_address = undef }
+    'ppp': { $manage_address = undef }
+    'wvdial': { $manage_address = undef }
+    default: {
+        $manage_address = $address ? {
+          ''      => $ipaddress,
+          default => $address,
+        }
+      }
   }
 
   # Redhat and Suse specific
@@ -230,6 +297,13 @@ define network::interface (
     },
     default => $peerdns,
   }
+  $manage_peerntp = $peerntp ? {
+    ''     => $manage_bootproto ? {
+      'dhcp'  => 'yes',
+      default => 'no',
+    },
+    default => $peerntp,
+  }
   $manage_ipaddr = $ipaddr ? {
     ''      => $ipaddress,
     default => $ipaddr,
@@ -240,6 +314,11 @@ define network::interface (
       false  => 'no',
     },
     default => $onboot,
+  }
+  $manage_defroute = $defroute ? {
+    true    => 'yes',
+    false   => 'no',
+    default => $defroute,
   }
   $manage_startmode = $startmode ? {
     ''     => $enable ? {
@@ -256,14 +335,16 @@ define network::interface (
     'Debian': {
       if ! defined(Concat['/etc/network/interfaces']) {
         concat { '/etc/network/interfaces':
-          mode    => '0644',
-          owner   => 'root',
-          group   => 'root',
+          mode   => '0644',
+          owner  => 'root',
+          group  => 'root',
+          notify => $network::manage_config_file_notify,
         }
       }
 
       if ! defined(Network::Interface['lo']) {
         network::interface { 'lo':
+          address      => '127.0.0.1',
           method       => 'loopback',
           manage_order => '05',
         }
@@ -287,14 +368,13 @@ define network::interface (
       concat::fragment { "interface-${name}":
         target  => '/etc/network/interfaces',
         content => template($template),
-        notify  => $network::manage_config_file_notify,
         order   => $manage_order,
       }
     }
 
     'RedHat': {
       file { "/etc/sysconfig/network-scripts/ifcfg-${name}":
-        ensure  => present,
+        ensure  => $ensure,
         content => template($template),
         mode    => '0644',
         owner   => 'root',
@@ -304,8 +384,27 @@ define network::interface (
     }
 
     'Suse': {
+      if $vlan {
+        if !defined(Package['vlan']) {
+          package { 'vlan':
+            ensure => 'present',
+          }
+        }
+        Package['vlan'] ->
+        File["/etc/sysconfig/network/ifcfg-${name}"]
+      }
+      if $bridge {
+        if !defined(Package['bridge-utils']) {
+          package { 'bridge-utils':
+            ensure => 'present',
+          }
+        }
+        Package['bridge-utils'] ->
+        File["/etc/sysconfig/network/ifcfg-${name}"]
+      }
+
       file { "/etc/sysconfig/network/ifcfg-${name}":
-        ensure  => present,
+        ensure  => $ensure,
         content => template($template),
         mode    => '0600',
         owner   => 'root',

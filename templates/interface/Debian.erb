@@ -6,17 +6,20 @@ auto <%= @interface %>
 allow-hotplug <%= @interface %>
 <% end -%>
 <%= @stanza %> <%= @interface %> <%= @family %> <%= @manage_method %>
-<% if @manage_address -%>
+<% if @manage_address and ! @manage_address.empty? -%>
     address <%= @manage_address %>
 <% end -%>
 <% if @manage_hwaddr -%>
-    hwaddr <%= @manage_hwaddr %>
+    hwaddress <%= @manage_hwaddr %>
 <% end -%>
 <% if @netmask -%>
     netmask <%= @netmask %>
 <% end -%>
 <% if @network -%>
     network <%= @network %>
+<% end -%>
+<% if @broadcast -%>
+    broadcast <%= @broadcast %>
 <% end -%>
 <% if @metric -%>
     metric <%= @metric %>
@@ -93,6 +96,9 @@ allow-hotplug <%= @interface %>
 <% if @autoconf -%>
     autoconf <%= @autoconf %>
 <% end -%>
+<% if @vlan_raw_device -%>
+    vlan-raw-device <%= @vlan_raw_device %>
+<% end -%>
 <% if @up.length > 0 then -%>
 <% @up.each do |script| -%>
     up <%= script %>
@@ -123,8 +129,8 @@ allow-hotplug <%= @interface %>
     post-down <%= script %>
 <% end -%>
 <% end -%>
-<% if @slaves.length > 0 then -%>
-    slaves <% @slaves.each do |intf| %> <%= intf -%><% end %>
+<% if @slaves.size > 0 then -%>
+    slaves <%= @slaves.join(' ') %>
 <% end -%>
 <% if @bond_mode -%>
     bond-mode <%= @bond_mode %>
@@ -141,8 +147,26 @@ allow-hotplug <%= @interface %>
 <% if @bond_master -%>
     bond-master <%= @bond_master %>
 <% end -%>
-<% if @bond_slaves -%>
-    bond-slaves <%= @bond_slaves %>
+<% if @bond_primary -%>
+    bond-primary <%= @bond_primary %>
+<% end -%>
+<% if @bond_slaves.size > 0 then -%>
+    bond-slaves <%= @bond_slaves.join(' ') %>
+<% end -%>
+<% if @bridge_ports.size > 0 then -%>
+    bridge_ports <%= @bridge_ports.join(' ') %>
+<% end -%>
+<% if @bridge_stp -%>
+    bridge_stp <%= @bridge_stp %>
+<% end -%>
+<% if @bridge_fd -%>
+    bridge_fd <%= @bridge_fd %>
+<% end -%>
+<% if @bridge_maxwait -%>
+    bridge_maxwait <%= @bridge_maxwait %>
+<% end -%>
+<% if @bond_xmit_hash_policy -%>
+    bond_xmit_hash_policy <%= @bond_xmit_hash_policy %>
 <% end -%>
 <% if @ucarp_vid -%>
     ucarp-vid <%= @ucarp_vid %>
