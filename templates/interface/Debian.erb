@@ -144,3 +144,13 @@ allow-hotplug <%= @interface %>
 <% if @bond_slaves -%>
     bond-slaves <%= @bond_slaves %>
 <% end -%>
+<% if @ucarp_vid -%>
+    ucarp-vid <%= @ucarp_vid %>
+    ucarp-vip <%= @ucarp_vip %>
+    ucarp-password <%= @ucarp_password %>
+    ucarp-advskew <%= @ucarp_advskew %>
+    ucarp-advbase <%= @ucarp_advbase %>
+    ucarp-master <%= @ucarp_master %>
+    ucarp-upscript <%= @ucarp_upscript %>
+    ucarp-downscript <%= @ucarp_downscript %>
+<% end -%>

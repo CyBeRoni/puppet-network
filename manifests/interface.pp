@@ -155,6 +155,16 @@ define network::interface (
   $bond_master     = undef,
   $bond_slaves     = undef,
 
+  # uCARP ip failover
+  $ucarp_vid       = undef,
+  $ucarp_vip       = undef,
+  $ucarp_password  = undef,
+  $ucarp_advskew   = 1,
+  $ucarp_advbase   = 1,
+  $ucarp_master    = "no",
+  $ucarp_upscript  = undef,
+  $ucarp_downscript= undef,
+
   # RedHat specific
   $ipaddr          = undef,
   $uuid            = undef,
@@ -256,6 +266,21 @@ define network::interface (
         network::interface { 'lo':
           method       => 'loopback',
           manage_order => '05',
+        }
+      }
+
+      if $ucarp_vid {
+        if ! defined(Package[$network::ucarp_package_name]) {
+          package {"${network::ucarp_package_name}":
+            ensure => $network::ucarp_package_ensure,
+          }
+        }
+
+        if ! defined(Network::Interface["${interface}:ucarp${ucarp_vid}"]) {
+          network::interface{"${interface}:ucarp${ucarp_vid}":
+            address => $ucarp_vip,
+            netmask => "255.255.255.255",
+          }
         }
       }
 
